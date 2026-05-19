@@ -20,18 +20,30 @@ export function ClientCreateModal({ onClose }: { onClose: () => void }) {
   async function submit() {
     setBusy(true);
     setError(null);
-    const res = await fetch("/api/admin/clients", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ownerName, businessName, email, slug }),
-    });
-    const json = (await res.json()) as { success: boolean; error?: string };
-    setBusy(false);
-    if (json.success) {
-      onClose();
-      window.location.reload();
-    } else {
-      setError(json.error ?? "Failed");
+    try {
+      const res = await fetch("/api/admin/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ownerName, businessName, email, slug }),
+      });
+      const raw = await res.text();
+      let json: { success?: boolean; error?: string } = {};
+      try {
+        json = raw ? (JSON.parse(raw) as { success?: boolean; error?: string }) : {};
+      } catch {
+        setError(`Server error (${res.status}): ${raw.slice(0, 200) || res.statusText}`);
+        return;
+      }
+      if (res.ok && json.success) {
+        onClose();
+        window.location.reload();
+        return;
+      }
+      setError(json.error ?? `Request failed (${res.status})`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setBusy(false);
     }
   }
 

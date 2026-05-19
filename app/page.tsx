@@ -35,7 +35,7 @@ export default function MarketingPage() {
               Sign in to your portal
             </Link>
             <div className="text-sm text-neutral-500">
-              Admin? Go to <Link href="/admin" className="text-brand hover:underline">/admin</Link>
+              Admin? Go to <Link href="/admin/dashboard" className="text-brand hover:underline">/admin</Link>
             </div>
           </div>
         </div>

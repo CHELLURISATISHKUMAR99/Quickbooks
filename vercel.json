@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/plaid/sync",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/quickbooks/refresh",
+      "schedule": "0 */6 * * *"
+    }
+  ]
+}

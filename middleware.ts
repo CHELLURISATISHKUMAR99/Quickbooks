@@ -44,9 +44,6 @@ export default authMiddleware({
     }
 
     if (!sub) {
-      if (path === "/" || path === "") {
-        return NextResponse.redirect(`https://${ROOT_DOMAIN}`);
-      }
       return NextResponse.next();
     }
 
@@ -81,10 +78,7 @@ export default authMiddleware({
     }
     if (path.startsWith("/portal/")) {
       if (role === "admin") {
-        const url = req.nextUrl.clone();
-        url.host = `admin.${ROOT_DOMAIN}`;
-        url.pathname = "/dashboard";
-        return NextResponse.redirect(url);
+        return NextResponse.redirect(new URL("/admin/dashboard", req.url));
       }
       if (role !== "client") {
         return NextResponse.redirect(new URL("/sign-in", req.url));

@@ -21,7 +21,7 @@ export default async function DocumentsPage({
           {docs.length} document{docs.length === 1 ? "" : "s"} on file
         </p>
       </div>
-      <DocumentList docs={docs} />
+      <DocumentList slug={client.slug} docs={docs} />
     </div>
   );
 }

@@ -14,6 +14,7 @@ import type {
 } from "@/types";
 import { formatBytes, formatDate } from "@/lib/utils/format";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { portalHref } from "@/lib/links/portal";
 
 const CATEGORY_SET = new Set(DOCUMENT_CATEGORIES.map((c) => c.value));
 const STATUS_SET = new Set<DocumentStatus>([
@@ -24,7 +25,13 @@ const STATUS_SET = new Set<DocumentStatus>([
   "replaced",
 ]);
 
-export function DocumentList({ docs }: { docs: DocumentRow[] }) {
+export function DocumentList({
+  slug,
+  docs,
+}: {
+  slug: string;
+  docs: DocumentRow[];
+}) {
   const search = useSearchParams();
   const seedCategory = search?.get("category");
   const seedStatus = search?.get("status");
@@ -53,14 +60,17 @@ export function DocumentList({ docs }: { docs: DocumentRow[] }) {
     });
   }, [docs, category, status, month]);
 
+  // The `from` param round-trips the current filter state back to /documents
+  // via the doc-detail back link. Store as a portal-prefixed path so the
+  // back link works on every host.
   const fromParam = useMemo(() => {
     const qs = new URLSearchParams();
     if (category) qs.set("category", category);
     if (status) qs.set("status", status);
     if (month) qs.set("month", String(month));
     const tail = qs.toString();
-    return `/documents${tail ? `?${tail}` : ""}`;
-  }, [category, status, month]);
+    return portalHref(slug, `/documents${tail ? `?${tail}` : ""}`);
+  }, [slug, category, status, month]);
 
   return (
     <div className="space-y-4">
@@ -129,7 +139,10 @@ export function DocumentList({ docs }: { docs: DocumentRow[] }) {
               </tr>
             )}
             {filtered.map((d) => {
-              const href = `/documents/${d.id}?from=${encodeURIComponent(fromParam)}`;
+              const href = portalHref(
+                slug,
+                `/documents/${d.id}?from=${encodeURIComponent(fromParam)}`,
+              );
               return (
                 <tr
                   key={d.id}

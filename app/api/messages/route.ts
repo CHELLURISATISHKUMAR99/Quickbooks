@@ -8,6 +8,8 @@ import {
   insertNotification,
 } from "@/lib/supabase/queries";
 import { emailNewMessage } from "@/lib/resend/send";
+import { portalAbsoluteHref } from "@/lib/links/portal";
+import { adminAbsoluteHref } from "@/lib/links/app";
 
 export const runtime = "nodejs";
 
@@ -43,7 +45,7 @@ export async function POST(req: NextRequest) {
         to: process.env.RESEND_REPLY_TO ?? "satish@quad4consulting.com",
         fromName: client.business_name,
         preview: body.slice(0, 200),
-        url: `https://admin.${process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "quad4consulting.com"}/clients/${client.id}/messages`,
+        url: adminAbsoluteHref(`/clients/${client.id}/messages`),
       });
     } catch {
       /* ignore */
@@ -60,7 +62,7 @@ export async function POST(req: NextRequest) {
         to: client.email,
         fromName: "Satish",
         preview: body.slice(0, 200),
-        url: `https://${client.slug}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "quad4consulting.com"}/messages`,
+        url: portalAbsoluteHref(client.slug, "/messages"),
       });
     } catch {
       /* ignore */

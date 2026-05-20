@@ -12,6 +12,8 @@ import {
 } from "@/lib/supabase/queries";
 import { pushDocumentToQuickBooks, shouldSync } from "@/lib/quickbooks/sync";
 import { emailDocumentApproved, emailSyncFailed } from "@/lib/resend/send";
+import { portalHref, portalAbsoluteHref } from "@/lib/links/portal";
+import { adminAbsoluteHref } from "@/lib/links/app";
 
 export const runtime = "nodejs";
 
@@ -116,7 +118,7 @@ export async function POST(
       to: process.env.RESEND_REPLY_TO ?? "satish@quad4consulting.com",
       clientName: client.business_name,
       count: 1,
-      adminUrl: `https://admin.${process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "quad4consulting.com"}/queue?status=sync_failed`,
+      adminUrl: adminAbsoluteHref("/queue?status=sync_failed"),
     });
   } catch {
     /* email failures are non-fatal */
@@ -133,13 +135,13 @@ async function sendApprovalSideEffects(
     type: "approval",
     title: "Document approved",
     message: doc.original_filename,
-    linkUrl: `https://${client.slug}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "quad4consulting.com"}/documents/${doc.id}`,
+    linkUrl: portalHref(client.slug, `/documents/${doc.id}`),
   });
   try {
     await emailDocumentApproved({
       to: client.email,
       filename: doc.original_filename,
-      portalUrl: `https://${client.slug}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "quad4consulting.com"}/documents/${doc.id}`,
+      portalUrl: portalAbsoluteHref(client.slug, `/documents/${doc.id}`),
     });
   } catch (err) {
     console.warn("approval email failed", err);

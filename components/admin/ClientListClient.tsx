@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { Client } from "@/types";
 import { formatDate } from "@/lib/utils/format";
 import { ClientCreateModal } from "./ClientCreateModal";
+import { tenantHost } from "@/lib/links/app";
 
 export function ClientListClient({ clients }: { clients: Client[] }) {
   const [open, setOpen] = useState(false);
@@ -73,7 +74,7 @@ export function ClientListClient({ clients }: { clients: Client[] }) {
                 </td>
                 <td className="px-4 py-3">{c.owner_name}</td>
                 <td className="px-4 py-3 text-xs text-neutral-500">
-                  {c.slug}.quad4consulting.com
+                  {tenantHost(c.slug)}
                 </td>
                 <td className="px-4 py-3 text-neutral-500">
                   {formatDate(c.created_at)}

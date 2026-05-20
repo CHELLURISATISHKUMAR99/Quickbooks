@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { portalHref } from "@/lib/links/portal";
 import { getClientBySlug, listDocuments, listPlaidTransactions, getIntegration } from "@/lib/supabase/queries";
 import { fetchDashboardMetrics, type DashboardMetrics } from "@/lib/quickbooks/reports";
 import { getAccountBalances } from "@/lib/plaid/sync";
@@ -55,7 +56,7 @@ export default async function DashboardPage({
           : "uploaded",
     description: descriptionFor(d),
     at: d.reviewed_at ?? d.uploaded_at,
-    href: `/documents/${d.id}`,
+    href: portalHref(client.slug, `/documents/${d.id}`),
   }));
 
   const rejected = docs.filter((d) => d.status === "rejected").length;
@@ -73,7 +74,7 @@ export default async function DashboardPage({
 
       {rejected > 0 && (
         <Link
-          href="/documents?status=rejected"
+          href={portalHref(client.slug, "/documents?status=rejected")}
           className="block bg-red-50 border border-red-200 text-red-800 rounded-md px-4 py-3 text-sm hover:bg-red-100"
         >
           You have {rejected} rejected document{rejected === 1 ? "" : "s"} — review and re-upload →

@@ -1,6 +1,6 @@
 import { DocumentUpload } from "@/components/portal/DocumentUpload";
 
-export default function UploadPage() {
+export default function UploadPage({ params }: { params: { slug: string } }) {
   return (
     <div className="max-w-3xl space-y-6">
       <div>
@@ -9,7 +9,7 @@ export default function UploadPage() {
           Choose a category, tag the month, and drop your files. Satish will review and approve.
         </p>
       </div>
-      <DocumentUpload />
+      <DocumentUpload slug={params.slug} />
     </div>
   );
 }

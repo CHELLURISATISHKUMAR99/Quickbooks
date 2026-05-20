@@ -4,9 +4,11 @@ import { initialsFromName } from "@/lib/utils/slug";
 import { NotificationBell } from "@/components/shared/NotificationBell";
 
 export function PortalHeader({
+  slug,
   businessName,
   booksUpToDate,
 }: {
+  slug: string;
   businessName: string;
   booksUpToDate: boolean;
 }) {
@@ -38,7 +40,7 @@ export function PortalHeader({
           >
             {booksUpToDate ? "Books up to date" : "Action needed"}
           </span>
-          <NotificationBell />
+          <NotificationBell slug={slug} />
           <UserButton afterSignOutUrl="/" />
         </div>
       </div>

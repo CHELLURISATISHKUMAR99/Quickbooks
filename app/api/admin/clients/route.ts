@@ -9,6 +9,7 @@ import {
 } from "@/lib/supabase/queries";
 import { isValidSlug } from "@/lib/utils/slug";
 import { emailWelcome } from "@/lib/resend/send";
+import { portalAbsoluteHref } from "@/lib/links/portal";
 import { randomBytes } from "crypto";
 
 export const runtime = "nodejs";
@@ -60,7 +61,7 @@ export async function POST(req: NextRequest) {
     publicMetadata: { role: "client", clientId: clientRow.id },
   });
 
-  const portalUrl = `https://${slug}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "quad4consulting.com"}`;
+  const portalUrl = portalAbsoluteHref(slug, "/dashboard");
   try {
     await emailWelcome({
       to: email,

@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { NotificationRow } from "@/types";
 import { timeAgo } from "@/lib/utils/format";
+import { portalHref } from "@/lib/links/portal";
 
-export function NotificationBell() {
+export function NotificationBell({ slug }: { slug: string }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationRow[]>([]);
   const unread = items.filter((n) => !n.is_read).length;
@@ -39,19 +40,30 @@ export function NotificationBell() {
     );
   }
 
-  // Notification link_urls are stored as full subdomain URLs (legacy)
-  // OR as already-rewritten /portal/{slug}/... paths. Convert subdomain
-  // URLs to the path the current portal expects; anything else returns
-  // null and the item renders as a plain (non-link) entry.
+  // Notification link_urls come in three shapes from history:
+  //   1. Legacy full subdomain URL: https://aaa.quad4consulting.com/documents/<id>
+  //   2. Bare relative path: /documents/<id>  (also legacy — works on subdomain
+  //      hosts via middleware rewrite but 404s on flat hosts)
+  //   3. Path-prefixed: /portal/<slug>/documents/<id>  (new format)
+  // Normalize all three to the path-prefixed form so a single navigation
+  // works on every host (subdomain, flat preview URL, localhost).
   function toInternalHref(raw: string | null): string | null {
     if (!raw) return null;
-    if (raw.startsWith("/")) return raw;
-    try {
-      const u = new URL(raw);
-      return u.pathname + u.search;
-    } catch {
-      return null;
+    let pathAndQuery: string;
+    if (raw.startsWith("/")) {
+      pathAndQuery = raw;
+    } else {
+      try {
+        const u = new URL(raw);
+        pathAndQuery = u.pathname + u.search;
+      } catch {
+        return null;
+      }
     }
+    // Already in path-prefixed form for the current portal? Pass through.
+    if (pathAndQuery.startsWith(`/portal/${slug}/`)) return pathAndQuery;
+    // Otherwise treat as a relative portal path and re-anchor under this slug.
+    return portalHref(slug, pathAndQuery);
   }
 
   return (

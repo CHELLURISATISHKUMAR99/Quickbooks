@@ -19,6 +19,7 @@ import {
   monthName,
 } from "@/lib/utils/constants";
 import { emailUploadNotification } from "@/lib/resend/send";
+import { adminAbsoluteHref } from "@/lib/links/app";
 import { randomUUID } from "crypto";
 import type { DocumentCategory } from "@/types";
 
@@ -158,7 +159,7 @@ export async function POST(req: NextRequest) {
       clientName: client.business_name,
       count: 1,
       monthLabel: `${monthName(month)} ${year}`,
-      reviewUrl: `https://admin.${process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "quad4consulting.com"}/queue?clientId=${client.id}`,
+      reviewUrl: adminAbsoluteHref(`/queue?clientId=${client.id}`),
     });
   } catch (err) {
     console.warn("upload notification email failed", err);

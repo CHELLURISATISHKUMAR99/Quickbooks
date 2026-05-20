@@ -9,6 +9,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { formatDate } from "@/lib/utils/format";
 import { RefreshAccountsButton } from "@/components/admin/RefreshAccountsButton";
+import { tenantHost } from "@/lib/links/app";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,7 @@ export default async function ClientDetailPage({
           {client.owner_name} · {client.email}
         </p>
         <p className="text-xs text-neutral-400">
-          Portal: {client.slug}.quad4consulting.com
+          Portal: {tenantHost(client.slug)}
         </p>
       </div>
 

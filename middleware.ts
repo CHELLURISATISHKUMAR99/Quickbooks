@@ -76,6 +76,11 @@ function extractSubdomain(req: NextRequest): string | null {
     return null;
   }
   if (host === ROOT_DOMAIN || host === `www.${ROOT_DOMAIN}`) return null;
+  // portal.<root> is the app's primary user-facing entry point: the
+  // sign-in page and any links from emails land here. No rewrite —
+  // serves /sign-in and /portal/* paths directly. Distinct from
+  // admin.<root> (admin app) and <slug>.<root> (tenant portals).
+  if (host === `portal.${ROOT_DOMAIN}`) return null;
   if (host.endsWith(`.${ROOT_DOMAIN}`)) {
     return host.slice(0, -1 * (ROOT_DOMAIN.length + 1));
   }

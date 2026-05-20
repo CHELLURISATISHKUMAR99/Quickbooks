@@ -2,6 +2,7 @@ import { getClientBySlug, getIntegration } from "@/lib/supabase/queries";
 import { PlaidConnectButton } from "@/components/portal/PlaidConnectButton";
 import { notFound } from "next/navigation";
 import { formatDate } from "@/lib/utils/format";
+import { tenantHost } from "@/lib/links/app";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +31,7 @@ export default async function SettingsPage({
           <dt className="text-neutral-500">Email</dt>
           <dd>{client.email}</dd>
           <dt className="text-neutral-500">Portal</dt>
-          <dd>{client.slug}.quad4consulting.com</dd>
+          <dd>{tenantHost(client.slug)}</dd>
         </dl>
       </section>
 

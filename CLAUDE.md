@@ -46,3 +46,13 @@ types/index.ts                Shared TypeScript types
 - Bank statements never auto-pushed to QuickBooks.
 - Rejection reason min 10 chars.
 - One admin (Satish), no admin self-registration.
+
+## Secrets / Operator notes
+
+- `TOKEN_ENCRYPTION_KEY` accepts either a 64-char hex string or a
+  base64-encoded 32-byte value. Generate with `openssl rand -hex 32`
+  (preferred — easier to verify length) or `openssl rand -base64 32`.
+  The code detects format automatically (`lib/encryption/index.ts`).
+  Rotating this key invalidates every stored ciphertext (QB + Plaid
+  access/refresh tokens), forcing every client to reconnect — only
+  rotate if a key is suspected compromised.

@@ -7,8 +7,10 @@ import { getServiceSupabase, DOCUMENTS_BUCKET } from "@/lib/supabase/server";
 import {
   countUploadsLastHour,
   getClientById,
+  getDocumentById,
   insertDocument,
   insertNotification,
+  replaceDocumentRpc,
 } from "@/lib/supabase/queries";
 import {
   ALLOWED_MIME,
@@ -64,6 +66,24 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return fail("Invalid form data");
   const { category, month, year } = parsed.data;
 
+  const replacesRaw = form.get("replaces");
+  const replacesId =
+    typeof replacesRaw === "string" && replacesRaw.length > 0
+      ? replacesRaw
+      : null;
+  let oldDoc: Awaited<ReturnType<typeof getDocumentById>> = null;
+  if (replacesId) {
+    oldDoc = await getDocumentById(replacesId);
+    // 404 on missing OR on cross-tenant mismatch — same response either
+    // way so we don't leak existence of other tenants' docs.
+    if (!oldDoc || oldDoc.client_id !== client.id) {
+      return fail("Not found", 404);
+    }
+    if (oldDoc.status === "replaced" || oldDoc.replaced_by_id) {
+      return fail("Document already replaced", 409);
+    }
+  }
+
   if (file.size > MAX_FILE_SIZE_BYTES) return fail("File too large (max 10MB)");
 
   const buf = Buffer.from(await file.arrayBuffer());
@@ -83,23 +103,52 @@ export async function POST(req: NextRequest) {
     .upload(storagePath, buf, { contentType: mime, upsert: false });
   if (upErr) return fail(`Upload failed: ${upErr.message}`, 500);
 
-  const doc = await insertDocument({
-    clientId: client.id,
-    filename: stored,
-    originalFilename: file.name,
-    storagePath,
-    fileSizeBytes: file.size,
-    mimeType: mime,
-    category: category as DocumentCategory,
-    month,
-    year,
-  });
+  let doc;
+  if (oldDoc) {
+    try {
+      doc = await replaceDocumentRpc({
+        oldDocumentId: oldDoc.id,
+        clientId: client.id,
+        filename: stored,
+        originalFilename: file.name,
+        storagePath,
+        fileSizeBytes: file.size,
+        mimeType: mime,
+        category: category as DocumentCategory,
+        month,
+        year,
+      });
+    } catch (err) {
+      // RPC failed after upload — orphan the uploaded blob rather than
+      // leaving the replacement chain in an inconsistent state.
+      await sb.storage.from(DOCUMENTS_BUCKET).remove([storagePath]).catch(() => {
+        /* best-effort cleanup */
+      });
+      const msg = (err as { message?: string }).message ?? "Replace failed";
+      const code = msg.includes("already replaced") ? 409 : 500;
+      return fail(msg, code);
+    }
+  } else {
+    doc = await insertDocument({
+      clientId: client.id,
+      filename: stored,
+      originalFilename: file.name,
+      storagePath,
+      fileSizeBytes: file.size,
+      mimeType: mime,
+      category: category as DocumentCategory,
+      month,
+      year,
+    });
+  }
 
   await insertNotification({
     clientId: client.id,
-    type: "upload",
-    title: "Document uploaded",
-    message: `${file.name} is pending review.`,
+    type: oldDoc ? "replacement" : "upload",
+    title: oldDoc ? "Document replaced" : "Document uploaded",
+    message: oldDoc
+      ? `${file.name} replaces ${oldDoc.original_filename}.`
+      : `${file.name} is pending review.`,
   });
 
   try {

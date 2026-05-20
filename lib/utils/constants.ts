@@ -57,6 +57,7 @@ export const DOCUMENT_STATUS_LABEL: Record<DocumentStatus, string> = {
   approved: "Approved",
   rejected: "Rejected",
   sync_failed: "Sync Failed",
+  replaced: "Replaced",
 };
 
 export const STATUS_BADGE_CLASS: Record<DocumentStatus, string> = {
@@ -64,6 +65,7 @@ export const STATUS_BADGE_CLASS: Record<DocumentStatus, string> = {
   approved: "bg-green-100 text-green-800 border-green-300",
   rejected: "bg-red-100 text-red-800 border-red-300",
   sync_failed: "bg-orange-100 text-orange-800 border-orange-300",
+  replaced: "bg-neutral-100 text-neutral-700 border-neutral-300",
 };
 
 export const REPORT_TYPE_LABEL: Record<ReportType, string> = {
@@ -77,6 +79,7 @@ export const ALLOWED_EXT = [".pdf", ".jpg", ".jpeg", ".png"];
 export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 export const UPLOAD_RATE_LIMIT_PER_HOUR = 20;
 export const SIGNED_URL_TTL_SECONDS = 3600;
+export const PREVIEW_URL_TTL_SECONDS = 600;
 export const DASHBOARD_CACHE_MINUTES = 30;
 
 export const MONTHS = [

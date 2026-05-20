@@ -115,6 +115,7 @@ export interface DocumentFilter {
   category?: DocumentCategory;
   month?: number;
   year?: number;
+  includeReplaced?: boolean;
 }
 
 export async function listDocuments(
@@ -127,6 +128,7 @@ export async function listDocuments(
     .order("uploaded_at", { ascending: false });
   if (filter.clientId) q = q.eq("client_id", filter.clientId);
   if (filter.status) q = q.eq("status", filter.status);
+  else if (!filter.includeReplaced) q = q.neq("status", "replaced");
   if (filter.category) q = q.eq("category", filter.category);
   if (filter.month) q = q.eq("month", filter.month);
   if (filter.year) q = q.eq("year", filter.year);
@@ -219,13 +221,61 @@ export async function countUploadsLastHour(clientId: string): Promise<number> {
 
 export async function getSignedDocumentUrl(
   storagePath: string,
+  ttlSeconds: number = SIGNED_URL_TTL_SECONDS,
 ): Promise<string> {
   const sb = getServiceSupabase();
   const { data, error } = await sb.storage
     .from(DOCUMENTS_BUCKET)
-    .createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS);
+    .createSignedUrl(storagePath, ttlSeconds);
   if (error) throw error;
   return data.signedUrl;
+}
+
+// TODO: this is one storage list() per call. Fine for the detail-page
+// case (one doc at a time). If we ever do bulk views or hover-previews,
+// switch to a HEAD-style existence check or cache results — otherwise
+// it becomes N+1 against Supabase Storage.
+export async function documentFileExists(
+  storagePath: string,
+): Promise<boolean> {
+  const sb = getServiceSupabase();
+  const slash = storagePath.lastIndexOf("/");
+  const dir = slash >= 0 ? storagePath.slice(0, slash) : "";
+  const name = slash >= 0 ? storagePath.slice(slash + 1) : storagePath;
+  const { data, error } = await sb.storage
+    .from(DOCUMENTS_BUCKET)
+    .list(dir, { search: name, limit: 1 });
+  if (error) return false;
+  return (data ?? []).some((f) => f.name === name);
+}
+
+export async function replaceDocumentRpc(input: {
+  oldDocumentId: string;
+  clientId: string;
+  filename: string;
+  originalFilename: string;
+  storagePath: string;
+  fileSizeBytes: number;
+  mimeType: string;
+  category: DocumentCategory;
+  month: number;
+  year: number;
+}): Promise<DocumentRow> {
+  const sb = getServiceSupabase();
+  const { data, error } = await sb.rpc("replace_document", {
+    p_old_id: input.oldDocumentId,
+    p_client_id: input.clientId,
+    p_filename: input.filename,
+    p_original_filename: input.originalFilename,
+    p_storage_path: input.storagePath,
+    p_file_size_bytes: input.fileSizeBytes,
+    p_mime_type: input.mimeType,
+    p_category: input.category,
+    p_month: input.month,
+    p_year: input.year,
+  });
+  if (error) throw error;
+  return data as DocumentRow;
 }
 
 // ============ INTEGRATIONS ============

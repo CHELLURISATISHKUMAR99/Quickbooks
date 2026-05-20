@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useDropzone } from "react-dropzone";
 import {
   ALLOWED_EXT,
@@ -16,13 +17,32 @@ interface QueuedFile {
   file: File;
   status: "queued" | "uploading" | "done" | "error";
   error?: string;
+  newDocumentId?: string;
 }
 
+const CATEGORY_VALUES = DOCUMENT_CATEGORIES.map((c) => c.value);
+
 export function DocumentUpload() {
+  const router = useRouter();
+  const search = useSearchParams();
   const now = new Date();
-  const [category, setCategory] = useState<DocumentCategory>("receipts");
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [year, setYear] = useState(now.getFullYear());
+
+  const prefillCategory = search?.get("category");
+  const prefillMonth = Number(search?.get("month"));
+  const prefillYear = Number(search?.get("year"));
+  const replaces = search?.get("replaces") ?? null;
+
+  const [category, setCategory] = useState<DocumentCategory>(
+    CATEGORY_VALUES.includes(prefillCategory as DocumentCategory)
+      ? (prefillCategory as DocumentCategory)
+      : "receipts",
+  );
+  const [month, setMonth] = useState(
+    prefillMonth >= 1 && prefillMonth <= 12 ? prefillMonth : now.getMonth() + 1,
+  );
+  const [year, setYear] = useState(
+    prefillYear >= 2020 && prefillYear <= 2030 ? prefillYear : now.getFullYear(),
+  );
   const [files, setFiles] = useState<QueuedFile[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [resultMessage, setResultMessage] = useState<string | null>(null);
@@ -64,17 +84,34 @@ export function DocumentUpload() {
       fd.append("category", category);
       fd.append("month", String(month));
       fd.append("year", String(year));
+      if (replaces) fd.append("replaces", replaces);
       try {
         const res = await fetch("/api/documents/upload", {
           method: "POST",
           body: fd,
         });
-        const json = (await res.json()) as { success: boolean; error?: string };
+        const json = (await res.json()) as {
+          success: boolean;
+          error?: string;
+          data?: { documentId?: string };
+        };
         if (json.success) {
           successCount++;
+          const newId = json.data?.documentId;
           setFiles((prev) =>
-            prev.map((p) => (p.id === qf.id ? { ...p, status: "done" } : p)),
+            prev.map((p) =>
+              p.id === qf.id
+                ? { ...p, status: "done", newDocumentId: newId }
+                : p,
+            ),
           );
+          // For a replace, redirect to the new doc's detail page so the
+          // user lands somewhere meaningful instead of staying on /upload.
+          if (replaces && newId) {
+            router.push(`/documents/${newId}`);
+            router.refresh();
+            return;
+          }
         } else {
           setFiles((prev) =>
             prev.map((p) =>
@@ -104,6 +141,15 @@ export function DocumentUpload() {
 
   return (
     <div className="space-y-6">
+      {replaces && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-900 rounded-md px-4 py-3 text-sm">
+          <div className="font-medium">Replacing a previous document</div>
+          <div className="text-xs mt-0.5">
+            The category and period are locked to match the original. The new
+            file will supersede the old one.
+          </div>
+        </div>
+      )}
       <div>
         <label className="block text-sm font-medium mb-2">Category</label>
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
@@ -111,12 +157,13 @@ export function DocumentUpload() {
             <button
               type="button"
               key={c.value}
-              onClick={() => setCategory(c.value)}
+              onClick={() => !replaces && setCategory(c.value)}
+              disabled={!!replaces && category !== c.value}
               className={`text-left p-3 rounded-md border ${
                 category === c.value
                   ? "border-brand bg-brand-50"
                   : "border-neutral-200 bg-white hover:border-neutral-300"
-              }`}
+              } ${replaces && category !== c.value ? "opacity-40 cursor-not-allowed" : ""}`}
             >
               <div className="font-medium text-sm">{c.label}</div>
               <div className="text-xs text-neutral-500 mt-0.5">
@@ -133,7 +180,8 @@ export function DocumentUpload() {
           <select
             value={month}
             onChange={(e) => setMonth(Number(e.target.value))}
-            className="w-full border border-neutral-300 rounded-md px-3 py-2 text-sm bg-white"
+            disabled={!!replaces}
+            className="w-full border border-neutral-300 rounded-md px-3 py-2 text-sm bg-white disabled:bg-neutral-50 disabled:text-neutral-500"
           >
             {MONTHS.map((m, i) => (
               <option key={m} value={i + 1}>
@@ -147,7 +195,8 @@ export function DocumentUpload() {
           <select
             value={year}
             onChange={(e) => setYear(Number(e.target.value))}
-            className="w-full border border-neutral-300 rounded-md px-3 py-2 text-sm bg-white"
+            disabled={!!replaces}
+            className="w-full border border-neutral-300 rounded-md px-3 py-2 text-sm bg-white disabled:bg-neutral-50 disabled:text-neutral-500"
           >
             {[year - 1, year, year + 1].map((y) => (
               <option key={y} value={y}>
@@ -223,7 +272,11 @@ export function DocumentUpload() {
         }
         className="bg-brand text-white px-5 py-2 rounded-md text-sm font-medium disabled:opacity-50"
       >
-        {submitting ? "Uploading…" : "Upload all"}
+        {submitting
+          ? "Uploading…"
+          : replaces
+            ? "Upload replacement"
+            : "Upload all"}
       </button>
     </div>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { NotificationRow } from "@/types";
 import { timeAgo } from "@/lib/utils/format";
 
@@ -38,6 +39,21 @@ export function NotificationBell() {
     );
   }
 
+  // Notification link_urls are stored as full subdomain URLs (legacy)
+  // OR as already-rewritten /portal/{slug}/... paths. Convert subdomain
+  // URLs to the path the current portal expects; anything else returns
+  // null and the item renders as a plain (non-link) entry.
+  function toInternalHref(raw: string | null): string | null {
+    if (!raw) return null;
+    if (raw.startsWith("/")) return raw;
+    try {
+      const u = new URL(raw);
+      return u.pathname + u.search;
+    } catch {
+      return null;
+    }
+  }
+
   return (
     <div className="relative">
       <button
@@ -65,19 +81,42 @@ export function NotificationBell() {
             <div className="p-4 text-sm text-neutral-500">No notifications</div>
           ) : (
             <ul>
-              {items.map((n) => (
-                <li
-                  key={n.id}
-                  className={`p-3 border-b border-neutral-100 text-sm hover:bg-neutral-50 cursor-pointer ${n.is_read ? "" : "bg-brand-50"}`}
-                  onClick={() => void markRead(n.id)}
-                >
-                  <div className="font-medium">{n.title}</div>
-                  <div className="text-neutral-600 text-xs">{n.message}</div>
-                  <div className="text-neutral-400 text-xs mt-1">
-                    {timeAgo(n.created_at)}
-                  </div>
-                </li>
-              ))}
+              {items.map((n) => {
+                const internal = toInternalHref(n.link_url);
+                const body = (
+                  <>
+                    <div className="font-medium">{n.title}</div>
+                    <div className="text-neutral-600 text-xs">{n.message}</div>
+                    <div className="text-neutral-400 text-xs mt-1">
+                      {timeAgo(n.created_at)}
+                    </div>
+                  </>
+                );
+                const className = `block p-3 border-b border-neutral-100 text-sm hover:bg-neutral-50 cursor-pointer ${n.is_read ? "" : "bg-brand-50"}`;
+                return (
+                  <li key={n.id}>
+                    {internal ? (
+                      <Link
+                        href={internal}
+                        className={className}
+                        onClick={() => {
+                          void markRead(n.id);
+                          setOpen(false);
+                        }}
+                      >
+                        {body}
+                      </Link>
+                    ) : (
+                      <div
+                        className={className}
+                        onClick={() => void markRead(n.id)}
+                      >
+                        {body}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

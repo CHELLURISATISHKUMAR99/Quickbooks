@@ -10,7 +10,8 @@ export type DocumentStatus =
   | "pending_review"
   | "approved"
   | "rejected"
-  | "sync_failed";
+  | "sync_failed"
+  | "replaced";
 
 export type QbSyncStatus = "not_applicable" | "pending" | "success" | "failed";
 
@@ -49,6 +50,8 @@ export interface DocumentRow {
   reviewed_by: string | null;
   qb_transaction_id: string | null;
   qb_sync_status: QbSyncStatus;
+  replaces_id: string | null;
+  replaced_by_id: string | null;
 }
 
 export interface ClientIntegration {

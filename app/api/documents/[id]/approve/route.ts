@@ -96,7 +96,7 @@ export async function POST(
     type: "approval",
     title: "Document approved",
     message: doc.original_filename,
-    linkUrl: `https://${client.slug}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "quad4consulting.com"}/documents`,
+    linkUrl: `https://${client.slug}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "quad4consulting.com"}/documents/${doc.id}`,
   });
 
   try {

@@ -50,7 +50,7 @@ export async function POST(
     type: "rejection",
     title: "Document rejected",
     message: `${doc.original_filename} — ${parsed.data.reason}`,
-    linkUrl: `https://${client.slug}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "quad4consulting.com"}/documents`,
+    linkUrl: `https://${client.slug}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "quad4consulting.com"}/documents/${doc.id}`,
   });
 
   try {

@@ -27,8 +27,16 @@ export default function MarketingPage() {
             Upload documents, see your dashboard, and let us handle the books.
             Built for small US businesses.
           </p>
-          <div className="text-sm text-neutral-500">
-            Client portals are accessed at <code>your-business.quad4consulting.com</code>
+          <div className="flex flex-col items-center gap-3">
+            <Link
+              href="/sign-in"
+              className="inline-block bg-brand text-white px-6 py-3 rounded-md font-medium hover:opacity-90"
+            >
+              Sign in to your portal
+            </Link>
+            <div className="text-sm text-neutral-500">
+              Admin? Go to <Link href="/admin/dashboard" className="text-brand hover:underline">/admin</Link>
+            </div>
           </div>
         </div>
       </section>

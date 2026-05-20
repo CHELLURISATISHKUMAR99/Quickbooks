@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   DOCUMENT_CATEGORIES,
   monthName,
@@ -13,10 +15,34 @@ import type {
 import { formatBytes, formatDate } from "@/lib/utils/format";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 
+const CATEGORY_SET = new Set(DOCUMENT_CATEGORIES.map((c) => c.value));
+const STATUS_SET = new Set<DocumentStatus>([
+  "pending_review",
+  "approved",
+  "rejected",
+  "sync_failed",
+  "replaced",
+]);
+
 export function DocumentList({ docs }: { docs: DocumentRow[] }) {
-  const [category, setCategory] = useState<DocumentCategory | "">("");
-  const [status, setStatus] = useState<DocumentStatus | "">("");
-  const [month, setMonth] = useState<number | "">("");
+  const search = useSearchParams();
+  const seedCategory = search?.get("category");
+  const seedStatus = search?.get("status");
+  const seedMonth = Number(search?.get("month"));
+
+  const [category, setCategory] = useState<DocumentCategory | "">(
+    seedCategory && CATEGORY_SET.has(seedCategory as DocumentCategory)
+      ? (seedCategory as DocumentCategory)
+      : "",
+  );
+  const [status, setStatus] = useState<DocumentStatus | "">(
+    seedStatus && STATUS_SET.has(seedStatus as DocumentStatus)
+      ? (seedStatus as DocumentStatus)
+      : "",
+  );
+  const [month, setMonth] = useState<number | "">(
+    seedMonth >= 1 && seedMonth <= 12 ? seedMonth : "",
+  );
 
   const filtered = useMemo(() => {
     return docs.filter((d) => {
@@ -26,6 +52,15 @@ export function DocumentList({ docs }: { docs: DocumentRow[] }) {
       return true;
     });
   }, [docs, category, status, month]);
+
+  const fromParam = useMemo(() => {
+    const qs = new URLSearchParams();
+    if (category) qs.set("category", category);
+    if (status) qs.set("status", status);
+    if (month) qs.set("month", String(month));
+    const tail = qs.toString();
+    return `/documents${tail ? `?${tail}` : ""}`;
+  }, [category, status, month]);
 
   return (
     <div className="space-y-4">
@@ -93,34 +128,54 @@ export function DocumentList({ docs }: { docs: DocumentRow[] }) {
                 </td>
               </tr>
             )}
-            {filtered.map((d) => (
-              <tr key={d.id} className="border-t border-neutral-100">
-                <td className="px-4 py-3">
-                  <div className="font-medium">{d.original_filename}</div>
-                  <div className="text-xs text-neutral-500">
-                    {formatBytes(d.file_size_bytes)}
-                  </div>
-                </td>
-                <td className="px-4 py-3 capitalize">
-                  {d.category.replace("_", " ")}
-                </td>
-                <td className="px-4 py-3">
-                  {monthName(d.month)} {d.year}
-                </td>
-                <td className="px-4 py-3">{formatDate(d.uploaded_at)}</td>
-                <td className="px-4 py-3">
-                  <StatusBadge status={d.status} />
-                  {d.status === "rejected" && d.rejection_reason && (
-                    <div
-                      className="text-xs text-red-600 mt-1"
-                      title={d.rejection_reason}
-                    >
-                      {d.rejection_reason}
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
+            {filtered.map((d) => {
+              const href = `/documents/${d.id}?from=${encodeURIComponent(fromParam)}`;
+              return (
+                <tr
+                  key={d.id}
+                  className="border-t border-neutral-100 hover:bg-neutral-50 cursor-pointer"
+                >
+                  <td className="px-4 py-3">
+                    <Link href={href} className="block">
+                      <div className="font-medium text-neutral-900">
+                        {d.original_filename}
+                      </div>
+                      <div className="text-xs text-neutral-500">
+                        {formatBytes(d.file_size_bytes)}
+                      </div>
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3 capitalize">
+                    <Link href={href} className="block">
+                      {d.category.replace("_", " ")}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3">
+                    <Link href={href} className="block">
+                      {monthName(d.month)} {d.year}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3">
+                    <Link href={href} className="block">
+                      {formatDate(d.uploaded_at)}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3">
+                    <Link href={href} className="block">
+                      <StatusBadge status={d.status} />
+                      {d.status === "rejected" && d.rejection_reason && (
+                        <div
+                          className="text-xs text-red-600 mt-1"
+                          title={d.rejection_reason}
+                        >
+                          {d.rejection_reason}
+                        </div>
+                      )}
+                    </Link>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

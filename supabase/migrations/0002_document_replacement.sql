@@ -46,6 +46,7 @@ CREATE OR REPLACE FUNCTION replace_document(
 ) RETURNS documents
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public, pg_temp
 AS $$
 DECLARE
   v_old documents%ROWTYPE;

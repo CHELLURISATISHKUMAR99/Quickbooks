@@ -5,9 +5,16 @@ const ALGO = "aes-256-gcm";
 function getKey(): Buffer {
   const raw = process.env.TOKEN_ENCRYPTION_KEY;
   if (!raw) throw new Error("TOKEN_ENCRYPTION_KEY is not set");
-  const key = Buffer.from(raw, "base64");
+  // Accept either format: 64-char hex (e.g. `openssl rand -hex 32`) or
+  // base64 of 32 bytes (e.g. `openssl rand -base64 32`). Hex is checked
+  // first because a 64-char hex string is also a valid base64 alphabet
+  // match and would silently decode to 48 bytes instead of 32.
+  const isHex = /^[0-9a-fA-F]{64}$/.test(raw);
+  const key = isHex ? Buffer.from(raw, "hex") : Buffer.from(raw, "base64");
   if (key.length !== 32) {
-    throw new Error("TOKEN_ENCRYPTION_KEY must decode to 32 bytes");
+    throw new Error(
+      "TOKEN_ENCRYPTION_KEY must be 64 hex chars or base64 of 32 bytes",
+    );
   }
   return key;
 }

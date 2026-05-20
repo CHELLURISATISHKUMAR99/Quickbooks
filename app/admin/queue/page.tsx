@@ -198,8 +198,18 @@ async function QueueTable({
                 )}
               </td>
               <td className="px-4 py-3 text-right">
-                {d.status === "pending_review" && (
-                  <ApproveRejectButtons documentId={d.id} />
+                {d.status === "pending_review" && client && (
+                  <ApproveRejectButtons
+                    doc={{
+                      id: d.id,
+                      original_filename: d.original_filename,
+                      category: d.category,
+                      month: d.month,
+                      year: d.year,
+                    }}
+                    clientId={client.id}
+                    clientName={client.business_name}
+                  />
                 )}
               </td>
             </tr>

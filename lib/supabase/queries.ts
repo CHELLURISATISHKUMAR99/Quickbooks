@@ -3,6 +3,7 @@ import { SIGNED_URL_TTL_SECONDS } from "@/lib/utils/constants";
 import type {
   Client,
   ClientIntegration,
+  ClientQbAccount,
   DocumentRow,
   DocumentCategory,
   DocumentStatus,
@@ -10,6 +11,7 @@ import type {
   MessageRow,
   NotificationRow,
   PlaidTransaction,
+  QbAccountClassification,
   ReportRow,
   SyncLog,
 } from "@/types";
@@ -179,6 +181,22 @@ export async function insertDocument(input: {
     .single();
   if (error) throw error;
   return data as DocumentRow;
+}
+
+export async function setDocumentApprovalFields(input: {
+  documentId: string;
+  amount: number;
+  postingAccountQbId: string;
+}): Promise<void> {
+  const sb = getServiceSupabase();
+  const { error } = await sb
+    .from("documents")
+    .update({
+      amount: input.amount,
+      posting_account_qb_id: input.postingAccountQbId,
+    })
+    .eq("id", input.documentId);
+  if (error) throw error;
 }
 
 export async function updateDocumentStatus(input: {
@@ -583,5 +601,112 @@ export async function getAdminSummary(): Promise<AdminSummary> {
     rejectedToday: rejected.count ?? 0,
     syncFailed: failed.count ?? 0,
     clientsNoUploadsThisMonth: noUploads,
+  };
+}
+
+// ============ QBO ACCOUNTS CACHE ============
+
+export interface UpsertQbAccountInput {
+  qbAccountId: string;
+  name: string;
+  accountType: string | null;
+  accountSubType: string | null;
+  classification: QbAccountClassification | null;
+  fullyQualifiedName: string | null;
+  active: boolean;
+}
+
+export async function upsertClientQbAccounts(
+  clientId: string,
+  rows: UpsertQbAccountInput[],
+): Promise<void> {
+  if (rows.length === 0) return;
+  const sb = getServiceSupabase();
+  const payload = rows.map((r) => ({
+    client_id: clientId,
+    qb_account_id: r.qbAccountId,
+    name: r.name,
+    account_type: r.accountType,
+    account_sub_type: r.accountSubType,
+    classification: r.classification,
+    fully_qualified_name: r.fullyQualifiedName,
+    active: r.active,
+    last_synced_at: new Date().toISOString(),
+  }));
+  const { error } = await sb
+    .from("client_qb_accounts")
+    .upsert(payload, { onConflict: "client_id,qb_account_id" });
+  if (error) throw error;
+}
+
+export async function listClientQbAccounts(
+  clientId: string,
+  filter?: { classification?: QbAccountClassification; activeOnly?: boolean },
+): Promise<ClientQbAccount[]> {
+  const sb = getServiceSupabase();
+  let q = sb
+    .from("client_qb_accounts")
+    .select("*")
+    .eq("client_id", clientId)
+    .order("fully_qualified_name", { ascending: true });
+  if (filter?.classification) q = q.eq("classification", filter.classification);
+  if (filter?.activeOnly !== false) q = q.eq("active", true);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []) as ClientQbAccount[];
+}
+
+export async function getFirstBankAccount(
+  clientId: string,
+): Promise<ClientQbAccount | null> {
+  const sb = getServiceSupabase();
+  const { data, error } = await sb
+    .from("client_qb_accounts")
+    .select("*")
+    .eq("client_id", clientId)
+    .eq("account_type", "Bank")
+    .eq("active", true)
+    .order("name", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as ClientQbAccount) ?? null;
+}
+
+export async function getClientQbAccount(
+  clientId: string,
+  qbAccountId: string,
+): Promise<ClientQbAccount | null> {
+  const sb = getServiceSupabase();
+  const { data, error } = await sb
+    .from("client_qb_accounts")
+    .select("*")
+    .eq("client_id", clientId)
+    .eq("qb_account_id", qbAccountId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as ClientQbAccount) ?? null;
+}
+
+export async function countCachedAccounts(clientId: string): Promise<{
+  total: number;
+  lastSyncedAt: string | null;
+}> {
+  const sb = getServiceSupabase();
+  const { data, error } = await sb
+    .from("client_qb_accounts")
+    .select("last_synced_at")
+    .eq("client_id", clientId)
+    .order("last_synced_at", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  const { count, error: cErr } = await sb
+    .from("client_qb_accounts")
+    .select("id", { count: "exact", head: true })
+    .eq("client_id", clientId);
+  if (cErr) throw cErr;
+  return {
+    total: count ?? 0,
+    lastSyncedAt: data?.[0]?.last_synced_at ?? null,
   };
 }

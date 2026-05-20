@@ -1,23 +1,58 @@
 "use client";
 
 import { useState } from "react";
+import { ApproveModal } from "./ApproveModal";
+import type { DocumentCategory } from "@/types";
 
-export function ApproveRejectButtons({ documentId }: { documentId: string }) {
+const SYNC_CATEGORIES: ReadonlySet<DocumentCategory> = new Set([
+  "receipts",
+  "sales",
+  "payroll",
+]);
+
+interface DocSummary {
+  id: string;
+  original_filename: string;
+  category: DocumentCategory;
+  month: number;
+  year: number;
+}
+
+export function ApproveRejectButtons({
+  doc,
+  clientId,
+  clientName,
+}: {
+  doc: DocSummary;
+  clientId: string;
+  clientName: string;
+}) {
   const [busy, setBusy] = useState<"approve" | "reject" | null>(null);
+  const [approveOpen, setApproveOpen] = useState(false);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  async function approve() {
+  const needsModal = SYNC_CATEGORIES.has(doc.category);
+
+  async function quickApprove() {
+    // Non-sync category — no amount/account needed.
     setBusy("approve");
     setError(null);
-    const res = await fetch(`/api/documents/${documentId}/approve`, {
-      method: "POST",
-    });
-    const json = (await res.json()) as { success: boolean; error?: string };
-    setBusy(null);
-    if (json.success) window.location.reload();
-    else setError(json.error ?? "Failed");
+    try {
+      const res = await fetch(`/api/documents/${doc.id}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      const json = (await res.json()) as { success: boolean; error?: string };
+      if (json.success) window.location.reload();
+      else setError(json.error ?? "Failed");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function reject() {
@@ -27,22 +62,27 @@ export function ApproveRejectButtons({ documentId }: { documentId: string }) {
     }
     setBusy("reject");
     setError(null);
-    const res = await fetch(`/api/documents/${documentId}/reject`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ reason: reason.trim() }),
-    });
-    const json = (await res.json()) as { success: boolean; error?: string };
-    setBusy(null);
-    if (json.success) window.location.reload();
-    else setError(json.error ?? "Failed");
+    try {
+      const res = await fetch(`/api/documents/${doc.id}/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: reason.trim() }),
+      });
+      const json = (await res.json()) as { success: boolean; error?: string };
+      if (json.success) window.location.reload();
+      else setError(json.error ?? "Failed");
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(null);
+    }
   }
 
   return (
     <div className="flex items-center gap-2">
       <button
         type="button"
-        onClick={() => void approve()}
+        onClick={() => (needsModal ? setApproveOpen(true) : void quickApprove())}
         disabled={busy !== null}
         className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded-md text-xs font-medium disabled:opacity-50"
       >
@@ -56,6 +96,19 @@ export function ApproveRejectButtons({ documentId }: { documentId: string }) {
       >
         Reject
       </button>
+
+      {error && !approveOpen && !rejectOpen && (
+        <span className="text-xs text-red-600 ml-1">{error}</span>
+      )}
+
+      {approveOpen && (
+        <ApproveModal
+          doc={doc}
+          clientId={clientId}
+          clientName={clientName}
+          onClose={() => setApproveOpen(false)}
+        />
+      )}
 
       {rejectOpen && (
         <div

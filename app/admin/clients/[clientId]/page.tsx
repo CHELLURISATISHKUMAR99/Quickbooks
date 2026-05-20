@@ -1,4 +1,5 @@
 import {
+  countCachedAccounts,
   getClientById,
   getIntegration,
   listDocuments,
@@ -7,6 +8,7 @@ import {
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { formatDate } from "@/lib/utils/format";
+import { RefreshAccountsButton } from "@/components/admin/RefreshAccountsButton";
 
 export const dynamic = "force-dynamic";
 
@@ -17,11 +19,12 @@ export default async function ClientDetailPage({
 }) {
   const client = await getClientById(params.clientId);
   if (!client) notFound();
-  const [qb, plaid, docs, logs] = await Promise.all([
+  const [qb, plaid, docs, logs, accountsSummary] = await Promise.all([
     getIntegration(client.id, "quickbooks"),
     getIntegration(client.id, "plaid"),
     listDocuments({ clientId: client.id }),
     listSyncLogs(client.id, 20),
+    countCachedAccounts(client.id),
   ]);
 
   return (
@@ -40,10 +43,16 @@ export default async function ClientDetailPage({
         <section className="bg-white border border-neutral-200 rounded-lg p-5">
           <h2 className="font-semibold mb-3">QuickBooks</h2>
           {qb ? (
-            <div>
-              <span className="inline-flex items-center gap-2 bg-green-50 text-green-800 border border-green-200 rounded-full px-3 py-1 text-sm mb-2">
+            <div className="space-y-2">
+              <span className="inline-flex items-center gap-2 bg-green-50 text-green-800 border border-green-200 rounded-full px-3 py-1 text-sm">
                 Connected · realm {qb.realm_id}
               </span>
+              <div className="text-xs text-neutral-500">
+                Accounts cached: {accountsSummary.total}
+                {accountsSummary.lastSyncedAt &&
+                  ` · last synced ${formatDate(accountsSummary.lastSyncedAt)}`}
+              </div>
+              <RefreshAccountsButton clientId={client.id} />
               <form action={`/api/admin/clients/${client.id}/quickbooks/disconnect`} method="post">
                 <button className="text-xs text-red-600 hover:underline" type="submit">
                   Disconnect

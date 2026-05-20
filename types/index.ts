@@ -52,6 +52,8 @@ export interface DocumentRow {
   qb_sync_status: QbSyncStatus;
   replaces_id: string | null;
   replaced_by_id: string | null;
+  amount: number | null;
+  posting_account_qb_id: string | null;
 }
 
 export interface ClientIntegration {
@@ -66,6 +68,22 @@ export interface ClientIntegration {
   connected_at: string;
   last_synced_at: string | null;
   is_active: boolean;
+  clearing_account_qb_id: string | null;
+}
+
+export type QbAccountClassification = "Asset" | "Equity" | "Expense" | "Liability" | "Revenue";
+
+export interface ClientQbAccount {
+  id: string;
+  client_id: string;
+  qb_account_id: string;
+  name: string;
+  account_type: string | null;
+  account_sub_type: string | null;
+  classification: QbAccountClassification | null;
+  fully_qualified_name: string | null;
+  active: boolean;
+  last_synced_at: string;
 }
 
 export interface SyncLog {

@@ -11,6 +11,7 @@ import {
 } from "@/lib/utils/constants";
 import type { DocumentCategory } from "@/types";
 import { formatBytes } from "@/lib/utils/format";
+import { portalHref } from "@/lib/links/portal";
 
 interface QueuedFile {
   id: string;
@@ -22,7 +23,7 @@ interface QueuedFile {
 
 const CATEGORY_VALUES = DOCUMENT_CATEGORIES.map((c) => c.value);
 
-export function DocumentUpload() {
+export function DocumentUpload({ slug }: { slug: string }) {
   const router = useRouter();
   const search = useSearchParams();
   const now = new Date();
@@ -108,7 +109,7 @@ export function DocumentUpload() {
           // For a replace, redirect to the new doc's detail page so the
           // user lands somewhere meaningful instead of staying on /upload.
           if (replaces && newId) {
-            router.push(`/documents/${newId}`);
+            router.push(portalHref(slug, `/documents/${newId}`));
             router.refresh();
             return;
           }

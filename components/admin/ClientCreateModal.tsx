@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { generateSlug } from "@/lib/utils/slug";
+import { tenantHost } from "@/lib/links/app";
 
 export function ClientCreateModal({ onClose }: { onClose: () => void }) {
   const [ownerName, setOwnerName] = useState("");
@@ -73,7 +74,7 @@ export function ClientCreateModal({ onClose }: { onClose: () => void }) {
               setSlugDirty(true);
             }}
             placeholder="garageking"
-            help={`${slug || "<slug>"}.quad4consulting.com`}
+            help={tenantHost(slug || "<slug>")}
           />
         </div>
         {error && (

@@ -11,6 +11,7 @@ import {
   monthName,
 } from "@/lib/utils/constants";
 import { formatBytes, formatDate, timeAgo } from "@/lib/utils/format";
+import { portalHref } from "@/lib/links/portal";
 
 export const dynamic = "force-dynamic";
 
@@ -42,7 +43,7 @@ export default async function DocumentDetailPage({
   const canInline =
     fileExists && INLINE_PREVIEWABLE.includes(doc.mime_type);
 
-  const backHref = sanitizeBackHref(searchParams.from);
+  const backHref = sanitizeBackHref(params.slug, searchParams.from);
 
   const replaceQs = new URLSearchParams({
     category: doc.category,
@@ -50,7 +51,7 @@ export default async function DocumentDetailPage({
     year: String(doc.year),
     replaces: doc.id,
   }).toString();
-  const replaceHref = `/upload?${replaceQs}`;
+  const replaceHref = portalHref(params.slug, `/upload?${replaceQs}`);
   const canReplace = doc.status !== "replaced";
   const replacePrimary = doc.status === "rejected";
 
@@ -92,7 +93,7 @@ export default async function DocumentDetailPage({
           <span>
             Replaced by{" "}
             <Link
-              href={`/documents/${replacement.id}`}
+              href={portalHref(params.slug, `/documents/${replacement.id}`)}
               className="font-medium text-brand hover:underline"
             >
               {replacement.original_filename}
@@ -231,10 +232,14 @@ export default async function DocumentDetailPage({
   );
 }
 
-// Only accept internal /documents paths so the back link can't be
-// hijacked into an open-redirect.
-function sanitizeBackHref(from: string | undefined): string {
-  if (!from) return "/documents";
-  if (!from.startsWith("/documents")) return "/documents";
-  return from;
+// Only accept internal /documents-rooted paths (either bare or already
+// portal-prefixed) so the back link can't be hijacked into an open
+// redirect. Always returns a portal-prefixed path so it works on every
+// host.
+function sanitizeBackHref(slug: string, from: string | undefined): string {
+  const fallback = portalHref(slug, "/documents");
+  if (!from) return fallback;
+  if (from.startsWith(`/portal/${slug}/documents`)) return from;
+  if (from.startsWith("/documents")) return portalHref(slug, from);
+  return fallback;
 }

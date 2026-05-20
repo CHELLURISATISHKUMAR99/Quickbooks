@@ -9,6 +9,7 @@ import {
   updateDocumentStatus,
 } from "@/lib/supabase/queries";
 import { emailDocumentRejected } from "@/lib/resend/send";
+import { portalHref, portalAbsoluteHref } from "@/lib/links/portal";
 
 export const runtime = "nodejs";
 
@@ -50,7 +51,7 @@ export async function POST(
     type: "rejection",
     title: "Document rejected",
     message: `${doc.original_filename} — ${parsed.data.reason}`,
-    linkUrl: `https://${client.slug}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "quad4consulting.com"}/documents/${doc.id}`,
+    linkUrl: portalHref(client.slug, `/documents/${doc.id}`),
   });
 
   try {
@@ -58,7 +59,7 @@ export async function POST(
       to: client.email,
       filename: doc.original_filename,
       reason: parsed.data.reason,
-      portalUrl: `https://${client.slug}.${process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "quad4consulting.com"}/upload`,
+      portalUrl: portalAbsoluteHref(client.slug, "/upload"),
     });
   } catch (err) {
     console.warn("rejection email failed", err);

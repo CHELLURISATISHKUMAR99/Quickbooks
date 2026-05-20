@@ -4,7 +4,7 @@ See the full product specification in this file; it is the authoritative source 
 
 This is a Next.js 14 (App Router) + TypeScript application implementing the AutoBooks Client Portal:
 
-- Subdomain routing: `admin.quad4consulting.com` for the admin app; `{slug}.quad4consulting.com` for each client portal.
+- Subdomain routing: `portal.quad4consulting.com` for the app sign-in entry; `admin.quad4consulting.com` for the admin app; `{slug}.quad4consulting.com` for each client portal. The apex `quad4consulting.com` is served by Porkbun's landing page (not by this app). All generated portal links go through `portalHref(slug, path)` in `lib/links/portal.ts`, which always emits `/portal/<slug>/<path>` so links work on every host shape (real subdomains, flat preview URLs, localhost).
 - Auth via Clerk; roles set in `publicMetadata` (`admin` / `client` + `clientId`).
 - Postgres via Supabase, RLS enforced; service role used in server code only.
 - Document storage via private Supabase Storage bucket with signed URLs.

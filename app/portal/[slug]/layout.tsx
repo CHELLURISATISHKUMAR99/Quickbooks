@@ -24,9 +24,13 @@ export default async function PortalLayout({
 
   return (
     <div className="min-h-screen flex flex-col">
-      <PortalHeader businessName={client.business_name} booksUpToDate />
+      <PortalHeader
+        slug={client.slug}
+        businessName={client.business_name}
+        booksUpToDate
+      />
       <div className="flex flex-1">
-        <PortalSidebar />
+        <PortalSidebar slug={client.slug} />
         <main className="flex-1 p-6 overflow-auto">{children}</main>
       </div>
     </div>

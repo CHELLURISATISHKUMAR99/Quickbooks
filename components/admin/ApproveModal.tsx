@@ -250,7 +250,13 @@ export function ApproveModal({
         </label>
         <select
           value={accountId}
-          onChange={(e) => setAccountId(e.target.value)}
+          onChange={(e) => {
+            setAccountId(e.target.value);
+            // Clear any prior submit error so it doesn't look like the
+            // new selection is also failing pre-flight.
+            setError(null);
+            setRawError(null);
+          }}
           disabled={accountsLoading || refreshing || submitting || accounts.length === 0}
           className="w-full border border-neutral-300 rounded-md px-3 py-2 text-sm bg-white"
           aria-required="true"

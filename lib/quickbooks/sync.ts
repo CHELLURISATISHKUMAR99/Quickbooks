@@ -65,7 +65,7 @@ const FRIENDLY_ERROR_PATTERNS: { match: RegExp; friendly: string }[] = [
       "Selected account no longer exists in QuickBooks. Click Refresh accounts and pick a different one.",
   },
   {
-    match: /invalid account type|account type|cannot be used/i,
+    match: /invalid account type|account type.*(not allowed|not valid|cannot be used)|cannot be used as/i,
     friendly:
       "This account can't receive this kind of entry. Pick a different account.",
   },
@@ -139,7 +139,26 @@ export async function pushDocumentToQuickBooks(
 
   let body: Record<string, unknown>;
   if (mapping.entity === "purchase") {
-    body = buildPurchase(input.amount, input.postingAccountQbId, txnDate, privateNote);
+    // QBO Purchase requires a payment-source account (Bank / Credit Card /
+    // Other Current Liability) at the top level AND an expense category at
+    // the line level. They must be different account types — the admin
+    // picks the Expense category; the source comes from the same
+    // clearing-account resolver JournalEntry uses (override -> first Bank).
+    const source = await resolveClearingAccount(doc.client_id);
+    if (!source.ok) {
+      return {
+        ok: false,
+        friendlyError: source.friendlyError,
+        rawError: source.rawError,
+      };
+    }
+    body = buildPurchase({
+      amount: input.amount,
+      expenseAccountQbId: input.postingAccountQbId,
+      sourceAccountQbId: source.qbAccountId,
+      txnDate,
+      privateNote,
+    });
   } else {
     // JournalEntry — needs a counter-account.
     const counter = await resolveClearingAccount(doc.client_id);
@@ -265,23 +284,28 @@ async function qbPost(
   return { ok: true, transactionId: created?.Id };
 }
 
-function buildPurchase(
-  amount: number,
-  accountQbId: string,
-  txnDate: string,
-  privateNote: string,
-): Record<string, unknown> {
+interface PurchaseInput {
+  amount: number;
+  expenseAccountQbId: string;   // line-level: where the expense is booked
+  sourceAccountQbId: string;    // top-level: Bank / Credit Card paying for it
+  txnDate: string;
+  privateNote: string;
+}
+
+function buildPurchase(input: PurchaseInput): Record<string, unknown> {
   return {
     PaymentType: "Cash",
-    AccountRef: { value: accountQbId },
-    TxnDate: txnDate,
-    PrivateNote: privateNote,
+    AccountRef: { value: input.sourceAccountQbId },
+    TxnDate: input.txnDate,
+    PrivateNote: input.privateNote,
     Line: [
       {
-        Amount: amount,
+        Amount: input.amount,
         DetailType: "AccountBasedExpenseLineDetail",
-        AccountBasedExpenseLineDetail: { AccountRef: { value: accountQbId } },
-        Description: privateNote,
+        AccountBasedExpenseLineDetail: {
+          AccountRef: { value: input.expenseAccountQbId },
+        },
+        Description: input.privateNote,
       },
     ],
   };

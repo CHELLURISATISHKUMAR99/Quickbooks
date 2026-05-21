@@ -110,6 +110,14 @@ export default authMiddleware({
       return NextResponse.next();
     }
 
+    // Sign-in / sign-up live at the app root (route group `(auth)`),
+    // not under /portal/<slug>. Serve them directly on every host so
+    // that on a tenant subdomain like aaa.<root>/sign-in we don't
+    // rewrite to a non-existent /portal/aaa/sign-in.
+    if (path.startsWith("/sign-in") || path.startsWith("/sign-up")) {
+      return NextResponse.next();
+    }
+
     if (!sub) {
       return NextResponse.next();
     }

@@ -1,7 +1,33 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { COMPANY_NAME } from "@/lib/utils/constants";
+import { getSession } from "@/lib/auth/session";
+import { getClientById } from "@/lib/supabase/queries";
+import { portalHref } from "@/lib/links/portal";
 
-export default function MarketingPage() {
+// Marketing page serves un-signed-in users. Already-signed-in users
+// land here when:
+//   1. <SignIn fallbackRedirectUrl="/" /> bounces them after auth
+//   2. They bookmark / share the root URL
+//   3. They hit /sign-in while already signed in (Clerk redirects them
+//      out, ultimately to fallbackRedirectUrl = "/")
+// In all three cases, "/" is the wrong final destination. Route them
+// to their proper home based on role, server-side, before render.
+export default async function MarketingPage() {
+  const session = await getSession();
+  if (session?.role === "admin") {
+    redirect("/admin/dashboard");
+  }
+  if (session?.role === "client" && session.clientId) {
+    const client = await getClientById(session.clientId);
+    if (client) {
+      redirect(portalHref(client.slug, "/dashboard"));
+    }
+  }
+  return <MarketingContent />;
+}
+
+function MarketingContent() {
   return (
     <main className="min-h-screen flex flex-col">
       <header className="border-b border-neutral-200 bg-white">

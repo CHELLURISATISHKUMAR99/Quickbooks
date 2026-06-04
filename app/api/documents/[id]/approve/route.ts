@@ -3,6 +3,7 @@ import { z } from "zod";
 import { fail, ok } from "@/lib/utils/api";
 import { requireAdmin } from "@/lib/auth/session";
 import {
+  advanceLastProcessed,
   getClientById,
   getDocumentById,
   insertNotification,
@@ -10,7 +11,11 @@ import {
   setDocumentApprovalFields,
   updateDocumentStatus,
 } from "@/lib/supabase/queries";
-import { pushDocumentToQuickBooks, shouldSync } from "@/lib/quickbooks/sync";
+import {
+  outcomeToPersistence,
+  pushDocumentToQuickBooks,
+  shouldSync,
+} from "@/lib/quickbooks/sync";
 import { emailDocumentApproved, emailSyncFailed } from "@/lib/resend/send";
 import { portalHref, portalAbsoluteHref } from "@/lib/links/portal";
 import { adminAbsoluteHref } from "@/lib/links/app";
@@ -81,24 +86,36 @@ export async function POST(
   }));
 
   if (result.ok) {
+    // Every non-failed outcome (pushed / duplicate / out_of_scope /
+    // closed_period) is a recorded decision: the document is approved,
+    // and qb_sync_status carries what actually happened with QBO.
+    const persistence = outcomeToPersistence(result.outcome);
+    const isHold =
+      persistence.syncLogStatus === "skipped" ||
+      persistence.syncLogStatus === "duplicate";
     await updateDocumentStatus({
       documentId: doc.id,
       status: "approved",
       reviewedBy: "admin",
       qbTransactionId: result.transactionId,
-      qbSyncStatus: "success",
+      qbSyncStatus: persistence.qbSyncStatus,
     });
     await insertSyncLog({
       documentId: doc.id,
       clientId: client.id,
       integrationType: "quickbooks",
-      status: "success",
+      status: persistence.syncLogStatus,
       qbTransactionId: result.transactionId,
+      errorMessage: isHold ? result.detail : undefined,
     });
+    // Advance the resume marker so a disconnect/reconnect doesn't reprocess.
+    await advanceLastProcessed(client.id, doc.uploaded_at);
     await sendApprovalSideEffects(doc, client);
     return ok({
       documentId: doc.id,
       transactionId: result.transactionId,
+      outcome: result.outcome,
+      detail: result.detail,
       deduped: result.deduped ?? false,
     });
   }

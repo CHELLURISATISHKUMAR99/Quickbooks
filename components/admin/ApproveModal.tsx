@@ -63,6 +63,10 @@ export function ApproveModal({
   const [error, setError] = useState<string | null>(null);
   const [rawError, setRawError] = useState<string | null>(null);
   const [showRaw, setShowRaw] = useState(false);
+  // Set when the approval succeeded but was NOT pushed to QBO (matched an
+  // existing entry, before cutover, or a closed period). We surface it
+  // instead of silently reloading so the admin knows nothing was posted.
+  const [held, setHeld] = useState<string | null>(null);
 
   const loadAccounts = useCallback(async () => {
     if (!classification) return;
@@ -143,9 +147,20 @@ export function ApproveModal({
       const json = (await res.json()) as {
         success: boolean;
         error?: string;
-        data?: { transactionId?: string; deduped?: boolean };
+        data?: {
+          transactionId?: string;
+          deduped?: boolean;
+          outcome?: string;
+          detail?: string;
+        };
       };
       if (json.success) {
+        const outcome = json.data?.outcome;
+        if (outcome && outcome !== "pushed") {
+          // Held / matched: show the reason; admin closes to refresh.
+          setHeld(json.data?.detail ?? "Approved, but not pushed to QuickBooks.");
+          return;
+        }
         onClose();
         window.location.reload();
         return;
@@ -198,6 +213,28 @@ export function ApproveModal({
             ×
           </button>
         </div>
+
+        {held && (
+          <div
+            className="bg-amber-50 border border-amber-200 text-amber-900 text-sm rounded-md p-3 mb-3"
+            role="status"
+          >
+            <div className="font-medium mb-0.5">
+              Approved — not pushed to QuickBooks
+            </div>
+            <div className="text-xs">{held}</div>
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                window.location.reload();
+              }}
+              className="mt-2 text-xs font-medium underline"
+            >
+              Done
+            </button>
+          </div>
+        )}
 
         {error && (
           <div

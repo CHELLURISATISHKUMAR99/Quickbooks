@@ -9,9 +9,23 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { formatDate } from "@/lib/utils/format";
 import { RefreshAccountsButton } from "@/components/admin/RefreshAccountsButton";
+import { CutoverDateEditor } from "@/components/admin/CutoverDateEditor";
 import { tenantHost } from "@/lib/links/app";
 
 export const dynamic = "force-dynamic";
+
+const SYNC_LOG_ICON: Record<string, string> = {
+  success: "✓",
+  failed: "✗",
+  duplicate: "⊘",
+  skipped: "↷",
+};
+const SYNC_LOG_TONE: Record<string, string> = {
+  success: "text-green-600",
+  failed: "text-red-600",
+  duplicate: "text-amber-600",
+  skipped: "text-neutral-500",
+};
 
 export default async function ClientDetailPage({
   params,
@@ -54,6 +68,26 @@ export default async function ClientDetailPage({
                   ` · last synced ${formatDate(accountsSummary.lastSyncedAt)}`}
               </div>
               <RefreshAccountsButton clientId={client.id} />
+              <div className="border-t border-neutral-100 pt-3 mt-1">
+                <CutoverDateEditor
+                  clientId={client.id}
+                  initialDate={qb.cutover_date}
+                />
+                <dl className="mt-2 text-xs text-neutral-500 space-y-0.5">
+                  <div>
+                    Books closed in QBO through:{" "}
+                    {qb.book_close_date
+                      ? formatDate(qb.book_close_date)
+                      : "—"}
+                  </div>
+                  <div>
+                    Last processed:{" "}
+                    {qb.last_processed_at
+                      ? formatDate(qb.last_processed_at)
+                      : "—"}
+                  </div>
+                </dl>
+              </div>
               <form action={`/api/admin/clients/${client.id}/quickbooks/disconnect`} method="post">
                 <button className="text-xs text-red-600 hover:underline" type="submit">
                   Disconnect
@@ -118,16 +152,18 @@ export default async function ClientDetailPage({
                 className="flex justify-between border-b border-neutral-100 py-1.5"
               >
                 <span>
-                  <span
-                    className={
-                      l.status === "success" ? "text-green-600" : "text-red-600"
-                    }
-                  >
-                    {l.status === "success" ? "✓" : "✗"}
+                  <span className={SYNC_LOG_TONE[l.status] ?? "text-neutral-500"}>
+                    {SYNC_LOG_ICON[l.status] ?? "•"}
                   </span>{" "}
                   {l.integration_type}
                   {l.error_message && (
-                    <span className="text-xs text-red-600 ml-2">
+                    <span
+                      className={`text-xs ml-2 ${
+                        l.status === "failed"
+                          ? "text-red-600"
+                          : "text-neutral-500"
+                      }`}
+                    >
                       {l.error_message}
                     </span>
                   )}

@@ -60,6 +60,26 @@ export const DOCUMENT_STATUS_LABEL: Record<DocumentStatus, string> = {
   replaced: "Replaced",
 };
 
+// Human labels + tone for the QBO sync outcome, surfaced in the admin
+// queue. Mirrors the QbSyncStatus union (keyed loosely as string).
+export const QB_SYNC_STATUS_LABEL: Record<string, string> = {
+  pending: "Pending",
+  success: "Synced ✓",
+  failed: "Sync failed",
+  out_of_scope: "Out of scope (pre-cutover)",
+  duplicate: "Matched existing",
+  closed_period: "Closed period",
+};
+
+export const QB_SYNC_STATUS_TONE: Record<string, string> = {
+  success: "text-green-600",
+  failed: "text-red-600",
+  duplicate: "text-amber-600",
+  out_of_scope: "text-neutral-500",
+  closed_period: "text-neutral-500",
+  pending: "text-neutral-500",
+};
+
 export const STATUS_BADGE_CLASS: Record<DocumentStatus, string> = {
   pending_review: "bg-amber-100 text-amber-800 border-amber-300",
   approved: "bg-green-100 text-green-800 border-green-300",

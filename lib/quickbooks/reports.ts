@@ -22,11 +22,21 @@ export interface QbReport {
 }
 
 interface QbReportApiRow {
+  Header?: { ColData?: { value: string }[] };
   ColData?: { value: string }[];
   Rows?: { Row?: QbReportApiRow[] };
+  // QBO tags each P&L section with a stable `group`, and its `Summary`
+  // carries QBO's own computed total for that section. We read those
+  // directly rather than re-deriving totals by matching labels.
   type?: string;
+  group?: string;
   Summary?: { ColData?: { value: string }[] };
 }
+
+// P&L section groups whose Summary total is authoritative (QBO-computed).
+const PNL_REVENUE_GROUP = "Income";
+const PNL_EXPENSE_GROUP = "Expenses";
+const PNL_NET_GROUP = "NetIncome";
 
 interface QbReportApiResponse {
   Rows?: { Row?: QbReportApiRow[] };
@@ -68,47 +78,89 @@ export async function fetchReport(input: {
   });
   if (!res.ok) throw new Error(`QB report failed: ${res.status}`);
   const json = (await res.json()) as QbReportApiResponse;
-  const rows = flattenRows(json.Rows?.Row ?? []);
-  const revenue = sumByLabel(rows, ["income", "revenue", "total income"]);
-  const expenses = sumByLabel(rows, ["expense", "expenses", "total expenses"]);
-  // ⚠️ SUSPECTED BUG (the −$80 "Net"): `revenue`/`expenses` are computed by
-  // loose case-insensitive SUBSTRING matching over `flattenRows`, which
-  // collects line items AND their section Summary rows AND QBO's own
-  // "Net …" summaries. So:
-  //   • "Net Income" / "Net Operating Income" / "Net Other Income" all
-  //     contain "income" → they get summed into `revenue`.
-  //   • each line item is double-counted against its "Total …" summary.
-  // net = revenue − expenses therefore inherits that pollution. Flagged
-  // for review — NOT fixed here (see PR description for the proposed fix:
-  // read QBO's labeled summary/group rows instead of substring-summing).
+
+  // Single structured pass: collect leaf line items for display and record
+  // each section's QBO-computed Summary total by group. We never treat a
+  // Summary row as a line item and never sum line items against their
+  // section totals — that double-counting + "Net … contains 'income'"
+  // contamination was the old −$80 bug.
+  const rows: QbReportRow[] = [];
+  const sections = new Map<string, number>();
+  walkReport(json.Rows?.Row ?? [], rows, sections);
+
+  const netIncome = sections.get(PNL_NET_GROUP);
+  let revenue: number;
+  let expenses: number;
+  let net: number;
+
+  if (netIncome !== undefined) {
+    // ProfitAndLoss-shaped report: surface QBO's own computed totals.
+    revenue = sections.get(PNL_REVENUE_GROUP) ?? 0;
+    expenses = sections.get(PNL_EXPENSE_GROUP) ?? 0;
+    net = netIncome; // authoritative — NOT recomputed from labels.
+  } else if (input.type === "pnl") {
+    // We asked for a P&L but got no NetIncome summary — the structure
+    // changed or the response is malformed. Refuse rather than surface an
+    // unverified Net.
+    throw new Error(
+      "QBO ProfitAndLoss returned no NetIncome summary row — cannot produce a verified Net",
+    );
+  } else {
+    // Non-P&L report (e.g. Cash Flow) has no Income/Expenses/NetIncome
+    // groups. Fall back to summing leaf line items only — still free of the
+    // summary/double-count contamination, since `rows` excludes summaries.
+    revenue = sumByLabel(rows, ["income", "revenue"]);
+    expenses = sumByLabel(rows, ["expense", "expenses"]);
+    net = revenue - expenses;
+  }
+
+  // Sanity check: for a P&L, the Net we surface MUST equal QBO's own
+  // NetIncome summary row. Guards against any future regression that
+  // recomputes Net by summing labels again.
+  if (netIncome !== undefined && Math.abs(net - netIncome) >= 0.005) {
+    throw new Error(
+      `P&L Net (${net}) does not match QBO NetIncome summary (${netIncome})`,
+    );
+  }
+
   return {
     type: input.type,
     start,
     end,
     rows,
-    totals: { revenue, expenses, net: revenue - expenses },
+    totals: { revenue, expenses, net },
     raw: json,
   };
 }
 
-function flattenRows(rows: QbReportApiRow[]): QbReportRow[] {
-  const out: QbReportRow[] = [];
-  for (const r of rows) {
-    if (r.ColData && r.ColData.length >= 2) {
+function rowAmount(colData?: { value: string }[]): number {
+  if (!colData || colData.length === 0) return 0;
+  const amt = parseFloat(colData[colData.length - 1]?.value ?? "0");
+  return isNaN(amt) ? 0 : amt;
+}
+
+// One pass over the report tree:
+//  • record each section's QBO-computed Summary total, keyed by `group`
+//    (Income / Expenses / GrossProfit / NetOperatingIncome / NetIncome /
+//    NetOtherIncome / COGS / …);
+//  • collect leaf "Data" rows (no child Rows) as displayable line items.
+// Section rows and Summary-only rows are NOT added as line items.
+function walkReport(
+  apiRows: QbReportApiRow[],
+  lineItems: QbReportRow[],
+  sections: Map<string, number>,
+): void {
+  for (const r of apiRows) {
+    if (r.group && r.Summary?.ColData) {
+      sections.set(r.group, rowAmount(r.Summary.ColData));
+    }
+    if (r.Rows?.Row) {
+      walkReport(r.Rows.Row, lineItems, sections);
+    } else if (r.ColData && r.ColData.length >= 2) {
       const label = r.ColData[0]?.value ?? "";
-      const amt = parseFloat(r.ColData[r.ColData.length - 1]?.value ?? "0");
-      if (label) out.push({ label, amount: isNaN(amt) ? 0 : amt });
+      if (label) lineItems.push({ label, amount: rowAmount(r.ColData) });
     }
-    if (r.Summary?.ColData) {
-      const label = r.Summary.ColData[0]?.value ?? "";
-      const amt = parseFloat(
-        r.Summary.ColData[r.Summary.ColData.length - 1]?.value ?? "0",
-      );
-      if (label) out.push({ label, amount: isNaN(amt) ? 0 : amt });
-    }
-    if (r.Rows?.Row) out.push(...flattenRows(r.Rows.Row));
   }
-  return out;
 }
 
 function sumByLabel(rows: QbReportRow[], needles: string[]): number {

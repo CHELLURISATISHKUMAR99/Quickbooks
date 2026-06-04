@@ -13,7 +13,14 @@ export type DocumentStatus =
   | "sync_failed"
   | "replaced";
 
-export type QbSyncStatus = "not_applicable" | "pending" | "success" | "failed";
+export type QbSyncStatus =
+  | "not_applicable"
+  | "pending"
+  | "success"
+  | "failed"
+  | "out_of_scope"
+  | "duplicate"
+  | "closed_period";
 
 export type IntegrationType = "quickbooks" | "plaid";
 
@@ -69,6 +76,11 @@ export interface ClientIntegration {
   last_synced_at: string | null;
   is_active: boolean;
   clearing_account_qb_id: string | null;
+  // Cutover / onboarding guard state (see migration 0004).
+  cutover_date: string | null;
+  book_close_date: string | null;
+  book_close_synced_at: string | null;
+  last_processed_at: string | null;
 }
 
 export type QbAccountClassification = "Asset" | "Equity" | "Expense" | "Liability" | "Revenue";
@@ -91,7 +103,7 @@ export interface SyncLog {
   document_id: string | null;
   client_id: string;
   integration_type: string;
-  status: "success" | "failed";
+  status: "success" | "failed" | "skipped" | "duplicate";
   qb_transaction_id: string | null;
   error_message: string | null;
   attempted_at: string;

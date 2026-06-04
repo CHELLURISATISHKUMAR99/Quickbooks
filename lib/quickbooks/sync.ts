@@ -1,13 +1,23 @@
 import { getValidAccessToken, qbApiBase } from "./auth";
 import {
+  QB_MINOR_VERSION,
+  docPostingDate,
+  findDuplicatePurchase,
+  getBookCloseDate,
+  isBeforeCutover,
+  isInClosedPeriod,
+} from "./guards";
+import {
   getClientQbAccount,
   getFirstBankAccount,
   getIntegration,
 } from "@/lib/supabase/queries";
+import { formatCurrency } from "@/lib/utils/format";
 import type {
   DocumentCategory,
   DocumentRow,
   QbAccountClassification,
+  QbSyncStatus,
 } from "@/types";
 
 // ── Category → QBO entity + expected posting-account classification ──
@@ -36,10 +46,23 @@ export function shouldSync(category: DocumentCategory): boolean {
   return ENTITY_BY_CATEGORY[category] !== undefined;
 }
 
+// Terminal outcome of a push attempt. `ok` stays for back-compat and is
+// simply `outcome !== "failed"` — every non-failed outcome is a deliberate,
+// recorded decision (the document is approved; it just may not have been
+// pushed to QBO, and never silently dropped).
+export type PushOutcome =
+  | "pushed"
+  | "duplicate"
+  | "out_of_scope"
+  | "closed_period"
+  | "failed";
+
 export interface QbPushResult {
   ok: boolean;
+  outcome: PushOutcome;
   transactionId?: string;
   deduped?: boolean;
+  detail?: string;
   friendlyError?: string;
   rawError?: string;
 }
@@ -47,6 +70,28 @@ export interface QbPushResult {
 export interface QbPushInput {
   amount: number;
   postingAccountQbId: string;
+}
+
+// Single source of truth for how a (non-failed) outcome persists, so the
+// approve route and the retry route never diverge.
+export interface OutcomePersistence {
+  qbSyncStatus: QbSyncStatus;
+  syncLogStatus: "success" | "failed" | "skipped" | "duplicate";
+}
+
+export function outcomeToPersistence(outcome: PushOutcome): OutcomePersistence {
+  switch (outcome) {
+    case "pushed":
+      return { qbSyncStatus: "success", syncLogStatus: "success" };
+    case "duplicate":
+      return { qbSyncStatus: "duplicate", syncLogStatus: "duplicate" };
+    case "out_of_scope":
+      return { qbSyncStatus: "out_of_scope", syncLogStatus: "skipped" };
+    case "closed_period":
+      return { qbSyncStatus: "closed_period", syncLogStatus: "skipped" };
+    case "failed":
+      return { qbSyncStatus: "failed", syncLogStatus: "failed" };
+  }
 }
 
 // ── Friendly error mapping ─────────────────────────────────────────
@@ -85,7 +130,7 @@ export async function pushDocumentToQuickBooks(
 ): Promise<QbPushResult> {
   const mapping = ENTITY_BY_CATEGORY[doc.category];
   if (!mapping) {
-    return { ok: true };
+    return { ok: true, outcome: "pushed" };
   }
 
   // Tenant + classification guard. Prevents posting a receipt to a
@@ -94,6 +139,7 @@ export async function pushDocumentToQuickBooks(
   if (!account || !account.active) {
     return {
       ok: false,
+      outcome: "failed",
       friendlyError:
         "Selected account no longer exists in QuickBooks. Click Refresh accounts and pick a different one.",
       rawError: "posting account not found in cache",
@@ -102,6 +148,7 @@ export async function pushDocumentToQuickBooks(
   if (account.classification !== mapping.classification) {
     return {
       ok: false,
+      outcome: "failed",
       friendlyError:
         "This account can't receive this kind of entry. Pick a different account.",
       rawError: `expected ${mapping.classification} account, got ${account.classification ?? "unknown"}`,
@@ -114,7 +161,40 @@ export async function pushDocumentToQuickBooks(
     ({ accessToken, realmId } = await getValidAccessToken(doc.client_id));
   } catch (err) {
     const raw = (err as Error).message;
-    return { ok: false, friendlyError: toFriendlyError(raw), rawError: raw };
+    return {
+      ok: false,
+      outcome: "failed",
+      friendlyError: toFriendlyError(raw),
+      rawError: raw,
+    };
+  }
+
+  const postingDate = docPostingDate(doc);
+
+  // ── Guard: cutover scope gate (no QBO call) ─────────────────────
+  // Onboarding a company with existing history: anything dated before the
+  // connection's cutover date is held for catch-up, never pushed forward.
+  const integ = await getIntegration(doc.client_id, "quickbooks");
+  if (isBeforeCutover(doc, integ?.cutover_date ?? null)) {
+    return {
+      ok: true,
+      outcome: "out_of_scope",
+      detail: `Transaction dated ${postingDate} is before the cutover date ${integ?.cutover_date}. Held for catch-up, not pushed.`,
+    };
+  }
+
+  // ── Guard: closed-period (cached QBO closing date) ──────────────
+  const bookClose = await getBookCloseDate({
+    accessToken,
+    realmId,
+    clientId: doc.client_id,
+  });
+  if (isInClosedPeriod(doc, bookClose)) {
+    return {
+      ok: true,
+      outcome: "closed_period",
+      detail: `Period ${postingDate} is on/before the QuickBooks closing date ${bookClose}. Not posted.`,
+    };
   }
 
   // ── Idempotency pre-flight ──────────────────────────────────────
@@ -130,11 +210,40 @@ export async function pushDocumentToQuickBooks(
     docIdLc,
   );
   if (existingId) {
-    return { ok: true, transactionId: existingId, deduped: true };
+    return {
+      ok: true,
+      outcome: "duplicate",
+      transactionId: existingId,
+      deduped: true,
+      detail: `Already posted by us as ${ENTITY_QBO_NAME[mapping.entity]} #${existingId}.`,
+    };
+  }
+
+  // ── Guard: pre-create duplicate check against existing QBO history ──
+  // The company may already have this transaction (manual entry, bank
+  // feed, prior bookkeeper). For Purchases, look for a match on
+  // amount + the document's month before creating a second one.
+  if (mapping.entity === "purchase") {
+    const dup = await findDuplicatePurchase({
+      accessToken,
+      realmId,
+      amount: input.amount,
+      year: doc.year,
+      month: doc.month,
+    });
+    if (dup) {
+      return {
+        ok: true,
+        outcome: "duplicate",
+        transactionId: dup.id,
+        deduped: true,
+        detail: `Matches existing Purchase #${dup.id}${dup.txnDate ? ` dated ${dup.txnDate}` : ""} for ${formatCurrency(input.amount)}. Not re-posted.`,
+      };
+    }
   }
 
   // ── Build body ──────────────────────────────────────────────────
-  const txnDate = `${doc.year}-${String(doc.month).padStart(2, "0")}-01`;
+  const txnDate = postingDate;
   const privateNote = `[doc:${docIdLc}] ${doc.original_filename}`;
 
   let body: Record<string, unknown>;
@@ -148,6 +257,7 @@ export async function pushDocumentToQuickBooks(
     if (!source.ok) {
       return {
         ok: false,
+        outcome: "failed",
         friendlyError: source.friendlyError,
         rawError: source.rawError,
       };
@@ -165,6 +275,7 @@ export async function pushDocumentToQuickBooks(
     if (!counter.ok) {
       return {
         ok: false,
+        outcome: "failed",
         friendlyError: counter.friendlyError,
         rawError: counter.rawError,
       };
@@ -232,7 +343,7 @@ async function findExistingByPrivateNote(
   const entityName = ENTITY_QBO_NAME[entity];
   const needle = `[doc:${docIdLc}]`;
   const query = `SELECT Id FROM ${entityName} WHERE PrivateNote LIKE '%${needle}%' MAXRESULTS 1`;
-  const url = `${qbApiBase()}/v3/company/${realmId}/query?query=${encodeURIComponent(query)}&minorversion=70`;
+  const url = `${qbApiBase()}/v3/company/${realmId}/query?query=${encodeURIComponent(query)}&minorversion=${QB_MINOR_VERSION}`;
   const res = await fetch(url, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -260,28 +371,34 @@ async function qbPost(
   body: Record<string, unknown>,
   requestId: string,
 ): Promise<QbPushResult> {
-  const url = `${qbApiBase()}/v3/company/${realmId}/${entity}?minorversion=70`;
+  const url = `${qbApiBase()}/v3/company/${realmId}/${entity}?minorversion=${QB_MINOR_VERSION}`;
   const res = await fetch(url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/json",
       "Content-Type": "application/json",
-      // Intuit dedupes identical RequestId for the same realm for ~30 days,
-      // so an exact retry after a network hiccup returns the original entity
-      // instead of creating a duplicate. Belt + suspenders with the
-      // PrivateNote pre-flight above.
+      // Idempotency: the document UUID is the RequestId — unique per create
+      // operation, stable across retries. Intuit dedupes identical RequestId
+      // for the same realm for ~30 days, so an exact retry after a network
+      // hiccup returns the original entity instead of creating a duplicate.
+      // Belt + suspenders with the PrivateNote pre-flight above.
       RequestId: requestId,
     },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
     const raw = `QB ${entity} failed: ${res.status} ${await res.text()}`;
-    return { ok: false, friendlyError: toFriendlyError(raw), rawError: raw };
+    return {
+      ok: false,
+      outcome: "failed",
+      friendlyError: toFriendlyError(raw),
+      rawError: raw,
+    };
   }
   const json = (await res.json()) as Record<string, unknown>;
   const created = json[ENTITY_QBO_NAME[entity]] as { Id?: string } | undefined;
-  return { ok: true, transactionId: created?.Id };
+  return { ok: true, outcome: "pushed", transactionId: created?.Id };
 }
 
 interface PurchaseInput {

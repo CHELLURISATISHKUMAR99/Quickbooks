@@ -4,6 +4,8 @@ import {
 } from "@/lib/supabase/queries";
 import {
   DOCUMENT_CATEGORIES,
+  QB_SYNC_STATUS_LABEL,
+  QB_SYNC_STATUS_TONE,
   monthName,
 } from "@/lib/utils/constants";
 import { formatBytes, formatDate } from "@/lib/utils/format";
@@ -190,11 +192,14 @@ async function QueueTable({
               <td className="px-4 py-3">{formatDate(d.uploaded_at)}</td>
               <td className="px-4 py-3">
                 <StatusBadge status={d.status} />
-                {d.qb_sync_status === "success" && (
-                  <div className="text-xs text-green-600 mt-1">Synced ✓</div>
-                )}
-                {d.qb_sync_status === "failed" && (
-                  <div className="text-xs text-red-600 mt-1">Sync failed</div>
+                {QB_SYNC_STATUS_LABEL[d.qb_sync_status] && (
+                  <div
+                    className={`text-xs mt-1 ${
+                      QB_SYNC_STATUS_TONE[d.qb_sync_status] ?? "text-neutral-500"
+                    }`}
+                  >
+                    {QB_SYNC_STATUS_LABEL[d.qb_sync_status]}
+                  </div>
                 )}
               </td>
               <td className="px-4 py-3 text-right">

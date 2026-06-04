@@ -12,6 +12,7 @@ import type {
   NotificationRow,
   PlaidTransaction,
   QbAccountClassification,
+  QbSyncStatus,
   ReportRow,
   SyncLog,
 } from "@/types";
@@ -205,7 +206,7 @@ export async function updateDocumentStatus(input: {
   rejectionReason?: string;
   reviewedBy?: string;
   qbTransactionId?: string;
-  qbSyncStatus?: "pending" | "success" | "failed" | "not_applicable";
+  qbSyncStatus?: QbSyncStatus;
 }): Promise<void> {
   const sb = getServiceSupabase();
   const patch: Record<string, unknown> = {
@@ -353,13 +354,83 @@ export async function markIntegrationSynced(
   if (error) throw error;
 }
 
+// ── QBO cutover / onboarding guard state ────────────────────────────
+
+// Default the cutover date on first connect WITHOUT clobbering an
+// admin-edited value on reconnect (only set when currently NULL).
+export async function ensureCutoverDate(
+  clientId: string,
+  date: string,
+): Promise<void> {
+  const sb = getServiceSupabase();
+  const integ = await getIntegration(clientId, "quickbooks");
+  if (!integ || integ.cutover_date) return;
+  const { error } = await sb
+    .from("client_integrations")
+    .update({ cutover_date: date })
+    .eq("client_id", clientId)
+    .eq("integration_type", "quickbooks");
+  if (error) throw error;
+}
+
+// Admin-editable cutover date. `date` is a YYYY-MM-DD string (or null to
+// clear, which disables the scope gate for this connection).
+export async function setIntegrationCutover(
+  clientId: string,
+  date: string | null,
+): Promise<void> {
+  const sb = getServiceSupabase();
+  const { error } = await sb
+    .from("client_integrations")
+    .update({ cutover_date: date })
+    .eq("client_id", clientId)
+    .eq("integration_type", "quickbooks");
+  if (error) throw error;
+}
+
+// Cache the QBO book-closing date for the closed-period guard.
+export async function setIntegrationBookClose(
+  clientId: string,
+  date: string | null,
+): Promise<void> {
+  const sb = getServiceSupabase();
+  const { error } = await sb
+    .from("client_integrations")
+    .update({
+      book_close_date: date,
+      book_close_synced_at: new Date().toISOString(),
+    })
+    .eq("client_id", clientId)
+    .eq("integration_type", "quickbooks");
+  if (error) throw error;
+}
+
+// Advance the resume marker monotonically. `uploadedAt` is the processed
+// document's uploaded_at (ISO). Read-modify-write is fine here: admin
+// approvals are effectively serial per client.
+export async function advanceLastProcessed(
+  clientId: string,
+  uploadedAt: string,
+): Promise<void> {
+  const sb = getServiceSupabase();
+  const integ = await getIntegration(clientId, "quickbooks");
+  if (!integ) return;
+  if (integ.last_processed_at && integ.last_processed_at >= uploadedAt) return;
+  const { error } = await sb
+    .from("client_integrations")
+    .update({ last_processed_at: uploadedAt })
+    .eq("client_id", clientId)
+    .eq("integration_type", "quickbooks");
+  if (error) throw error;
+}
+
 // ============ SYNC LOGS ============
 
 export async function insertSyncLog(input: {
   documentId?: string;
   clientId: string;
   integrationType: string;
-  status: "success" | "failed";
+  status: "success" | "failed" | "skipped" | "duplicate";
   qbTransactionId?: string;
   errorMessage?: string;
 }): Promise<void> {

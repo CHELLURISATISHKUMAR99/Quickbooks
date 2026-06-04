@@ -2,11 +2,15 @@ import { NextRequest } from "next/server";
 import { requireAdmin } from "@/lib/auth/session";
 import { fail, ok } from "@/lib/utils/api";
 import {
+  advanceLastProcessed,
   getDocumentById,
   insertSyncLog,
   updateDocumentStatus,
 } from "@/lib/supabase/queries";
-import { pushDocumentToQuickBooks } from "@/lib/quickbooks/sync";
+import {
+  outcomeToPersistence,
+  pushDocumentToQuickBooks,
+} from "@/lib/quickbooks/sync";
 
 export const runtime = "nodejs";
 
@@ -43,21 +47,29 @@ export async function POST(req: NextRequest) {
   }));
 
   if (result.ok) {
+    const persistence = outcomeToPersistence(result.outcome);
+    const isHold =
+      persistence.syncLogStatus === "skipped" ||
+      persistence.syncLogStatus === "duplicate";
     await updateDocumentStatus({
       documentId: doc.id,
       status: "approved",
       qbTransactionId: result.transactionId,
-      qbSyncStatus: "success",
+      qbSyncStatus: persistence.qbSyncStatus,
     });
     await insertSyncLog({
       documentId: doc.id,
       clientId: doc.client_id,
       integrationType: "quickbooks",
-      status: "success",
+      status: persistence.syncLogStatus,
       qbTransactionId: result.transactionId,
+      errorMessage: isHold ? result.detail : undefined,
     });
+    await advanceLastProcessed(doc.client_id, doc.uploaded_at);
     return ok({
       transactionId: result.transactionId,
+      outcome: result.outcome,
+      detail: result.detail,
       deduped: result.deduped ?? false,
     });
   }

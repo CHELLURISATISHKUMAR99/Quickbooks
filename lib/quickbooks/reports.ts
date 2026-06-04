@@ -33,14 +33,36 @@ interface QbReportApiResponse {
   Header?: { StartPeriod?: string; EndPeriod?: string };
 }
 
+// Default reporting window when a caller doesn't pass one: the current
+// calendar month. Keeps every report bounded so a missing/empty range can
+// never silently run all-time and pull in old/junk transactions.
+function currentPeriod(): { start: string; end: string } {
+  const now = new Date();
+  return {
+    start: new Date(now.getFullYear(), now.getMonth(), 1)
+      .toISOString()
+      .slice(0, 10),
+    end: new Date(now.getFullYear(), now.getMonth() + 1, 0)
+      .toISOString()
+      .slice(0, 10),
+  };
+}
+
 export async function fetchReport(input: {
   clientId: string;
   type: ReportType;
-  start: string;
-  end: string;
+  start?: string;
+  end?: string;
 }): Promise<QbReport> {
+  // Resolve the date range first: explicit start+end if given, otherwise
+  // default to the current period. The QBO Reports API is always called
+  // WITH start_date/end_date, so it never returns an all-time report.
+  const period = currentPeriod();
+  const start = input.start || period.start;
+  const end = input.end || period.end;
+
   const { accessToken, realmId } = await getValidAccessToken(input.clientId);
-  const url = `${qbApiBase()}/v3/company/${realmId}/reports/${REPORT_PATH[input.type]}?start_date=${input.start}&end_date=${input.end}&minorversion=70`;
+  const url = `${qbApiBase()}/v3/company/${realmId}/reports/${REPORT_PATH[input.type]}?start_date=${start}&end_date=${end}&minorversion=70`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
   });
@@ -49,10 +71,20 @@ export async function fetchReport(input: {
   const rows = flattenRows(json.Rows?.Row ?? []);
   const revenue = sumByLabel(rows, ["income", "revenue", "total income"]);
   const expenses = sumByLabel(rows, ["expense", "expenses", "total expenses"]);
+  // ⚠️ SUSPECTED BUG (the −$80 "Net"): `revenue`/`expenses` are computed by
+  // loose case-insensitive SUBSTRING matching over `flattenRows`, which
+  // collects line items AND their section Summary rows AND QBO's own
+  // "Net …" summaries. So:
+  //   • "Net Income" / "Net Operating Income" / "Net Other Income" all
+  //     contain "income" → they get summed into `revenue`.
+  //   • each line item is double-counted against its "Total …" summary.
+  // net = revenue − expenses therefore inherits that pollution. Flagged
+  // for review — NOT fixed here (see PR description for the proposed fix:
+  // read QBO's labeled summary/group rows instead of substring-summing).
   return {
     type: input.type,
-    start: input.start,
-    end: input.end,
+    start,
+    end,
     rows,
     totals: { revenue, expenses, net: revenue - expenses },
     raw: json,

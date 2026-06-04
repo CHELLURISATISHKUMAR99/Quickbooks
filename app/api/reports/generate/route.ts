@@ -7,10 +7,12 @@ import { insertReport } from "@/lib/supabase/queries";
 
 export const runtime = "nodejs";
 
+// start/end are optional: omit them to default to the current period
+// (resolved in fetchReport), or pass an explicit YYYY-MM-DD range.
 const schema = z.object({
   type: z.enum(["pnl", "expense_summary", "cash_flow"]),
-  start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -32,11 +34,13 @@ export async function POST(req: NextRequest) {
     end: parsed.data.end,
   });
 
+  // Persist the RESOLVED range (so the PDF re-fetch reproduces the same
+  // window even when the caller relied on the default).
   const row = await insertReport({
     clientId: session.clientId,
     reportType: parsed.data.type,
-    dateRangeStart: parsed.data.start,
-    dateRangeEnd: parsed.data.end,
+    dateRangeStart: report.start,
+    dateRangeEnd: report.end,
   });
 
   return ok({
